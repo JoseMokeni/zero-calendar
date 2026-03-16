@@ -58,6 +58,23 @@ export const authOptions: NextAuthOptions = {
         token.refreshToken = account.refresh_token
         token.expiresAt = account.expires_at
         token.provider = account.provider
+
+        if (account.provider === "google" && user) {
+          console.log("[Auth] Storing Google credentials to KV for user:", user.id)
+          try {
+            await kv.hset(`user:${user.id}`, {
+              provider: account.provider,
+              accessToken: account.access_token,
+              refreshToken: account.refresh_token,
+              expiresAt: account.expires_at,
+            })
+            console.log("[Auth] Google credentials stored successfully")
+          } catch (err) {
+            console.error("[Auth] Failed to store Google credentials:", err)
+          }
+        } else {
+          console.log("[Auth] Skipping KV store — provider:", account.provider, "user:", !!user)
+        }
       }
 
       if (user) {

@@ -4,7 +4,7 @@ import { kv } from "@/lib/kv-config"
 import { nanoid } from "nanoid"
 import { format } from "date-fns-tz"
 import { parseISO, addMinutes } from "date-fns"
-import { createGoogleCalendarEvent, getGoogleCalendarEvents } from "./google-calendar"
+import { createGoogleCalendarEvent, getGoogleCalendarEvents, updateGoogleCalendarEvent, deleteGoogleCalendarEvent } from "./google-calendar"
 import ical from "ical-generator"
 import { v4 as uuidv4 } from "uuid"
 import { RRule } from "rrule"
@@ -67,6 +67,21 @@ export type CalendarCategory = {
   color: string
   userId: string
   visible: boolean
+}
+
+async function getGoogleCredentials(userId: string) {
+  const userData = await kv.hgetall(`user:${userId}`)
+  console.log("[Google] Checking credentials for user:", userId)
+  console.log("[Google] KV user data keys:", userData ? Object.keys(userData) : "null")
+  console.log("[Google] provider:", userData?.provider, "hasAccessToken:", !!userData?.accessToken, "hasRefreshToken:", !!userData?.refreshToken)
+  if (userData?.provider === "google" && userData?.accessToken && userData?.refreshToken) {
+    return {
+      accessToken: userData.accessToken as string,
+      refreshToken: userData.refreshToken as string,
+      expiresAt: userData.expiresAt as number,
+    }
+  }
+  return null
 }
 
 
@@ -296,11 +311,22 @@ export async function getEvents(userId: string, start: Date, end: Date): Promise
 
     const events = await kv.lrange<CalendarEvent>(`user:${userId}:events`, 0, -1)
 
-
-    return events.filter((event) => {
+    const filtered = events.filter((event) => {
       const eventStart = new Date(event.start)
       return eventStart >= start && eventStart <= end
     })
+
+    const creds = await getGoogleCredentials(userId)
+    if (creds) {
+      try {
+        const googleEvents = await getGoogleCalendarEvents(userId, creds.accessToken, creds.refreshToken, creds.expiresAt, start, end)
+        filtered.push(...googleEvents)
+      } catch (err) {
+        console.error("[Calendar] Failed to fetch Google events:", err)
+      }
+    }
+
+    return filtered
   } catch (error) {
     console.error("Error fetching events:", error)
     throw new Error("Failed to fetch events")
@@ -342,6 +368,13 @@ export async function createEvent(event: Omit<CalendarEvent, "id">): Promise<Cal
     console.log("[Calendar] Final start time:", newEvent.start)
     console.log("[Calendar] Final end time:", newEvent.end)
 
+    const creds = await getGoogleCredentials(event.userId)
+    if (creds) {
+      await createGoogleCalendarEvent(event.userId, creds.accessToken, creds.refreshToken, creds.expiresAt, newEvent).catch((err) =>
+        console.error("[Calendar] Failed to sync to Google:", err)
+      )
+    }
+
     return newEvent
   } catch (error) {
     console.error("Error creating event:", error)
@@ -358,6 +391,15 @@ export async function updateEvent(event: CalendarEvent): Promise<CalendarEvent> 
     await kv.del(`user:${event.userId}:events`)
     if (updatedEvents.length > 0) {
       await kv.rpush(`user:${event.userId}:events`, ...updatedEvents)
+    }
+
+    if (event.id.startsWith("google_")) {
+      const creds = await getGoogleCredentials(event.userId)
+      if (creds) {
+        await updateGoogleCalendarEvent(event.userId, creds.accessToken, creds.refreshToken, creds.expiresAt, event).catch((err) =>
+          console.error("[Calendar] Failed to sync update to Google:", err)
+        )
+      }
     }
 
     return event
@@ -377,6 +419,15 @@ export async function deleteEvent(userId: string, eventId: string): Promise<void
     if (filteredEvents.length > 0) {
       await kv.rpush(`user:${userId}:events`, ...filteredEvents)
     }
+
+    if (eventId.startsWith("google_")) {
+      const creds = await getGoogleCredentials(userId)
+      if (creds) {
+        await deleteGoogleCalendarEvent(userId, creds.accessToken, creds.refreshToken, creds.expiresAt, eventId).catch((err) =>
+          console.error("[Calendar] Failed to sync delete to Google:", err)
+        )
+      }
+    }
   } catch (error) {
     console.error("Error deleting event:", error)
     throw new Error("Failed to delete event")
@@ -386,7 +437,7 @@ export async function deleteEvent(userId: string, eventId: string): Promise<void
 
 export async function searchEvents(userId: string, query: string): Promise<CalendarEvent[]> {
 
-  const allEvents = await kv.zrange(`events:${userId}`, 0, -1)
+  const allEvents = await kv.lrange<CalendarEvent>(`user:${userId}:events`, 0, -1)
 
 
   const timezone = await getUserTimezone(userId)
@@ -919,7 +970,7 @@ export async function syncWithGoogleCalendar(userId: string): Promise<{ success:
     )
 
 
-    const localEvents = (await kv.zrange(`events:${userId}`, 0, -1)) as CalendarEvent[]
+    const localEvents = await kv.lrange<CalendarEvent>(`user:${userId}:events`, 0, -1)
 
 
     const nonGoogleEvents = localEvents.filter((event) => event.source !== "google")

@@ -842,9 +842,14 @@ IMPORTANT GUIDELINES:
       }
 
 
-      if (intentData.intent === "create_event" && (!intentData.eventDetails || !intentData.eventDetails.title)) {
-        console.error("Missing required fields for create_event intent")
-        return { intent: "other" }
+      if (intentData.intent === "create_event") {
+        if (!intentData.eventDetails) {
+          console.error("Missing required fields for create_event intent")
+          return { intent: "other" }
+        }
+        if (!intentData.eventDetails.title) {
+          intentData.eventDetails.title = "New Event"
+        }
       }
 
       if (intentData.intent === "update_event" && (!intentData.eventIdentifier || !intentData.updates)) {

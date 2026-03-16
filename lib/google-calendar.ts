@@ -13,11 +13,13 @@ interface GoogleCalendarEvent {
   summary: string
   description?: string
   start: {
-    dateTime: string
+    dateTime?: string
+    date?: string
     timeZone?: string
   }
   end: {
-    dateTime: string
+    dateTime?: string
+    date?: string
     timeZone?: string
   }
   location?: string
@@ -105,17 +107,18 @@ async function refreshAccessTokenIfNeeded(userId: string, refreshToken: string, 
  * Convert Google Calendar event to our CalendarEvent format
  */
 function convertGoogleEventToCalendarEvent(googleEvent: GoogleCalendarEvent, userId: string): CalendarEvent {
+  const isAllDay = !googleEvent.start.dateTime
   return {
     id: `google_${googleEvent.id}`,
     title: googleEvent.summary,
     description: googleEvent.description,
-    start: googleEvent.start.dateTime,
-    end: googleEvent.end.dateTime,
+    start: googleEvent.start.dateTime || googleEvent.start.date || "",
+    end: googleEvent.end.dateTime || googleEvent.end.date || "",
+    allDay: isAllDay,
     location: googleEvent.location,
     color: googleEvent.colorId ? colorMap[googleEvent.colorId] || "#3b82f6" : "#3b82f6",
     userId,
     source: "google",
-
     timezone: googleEvent.start.timeZone || "UTC",
   }
 }
@@ -132,14 +135,12 @@ async function convertCalendarEventToGoogleEvent(event: CalendarEvent): Promise<
     id: googleEventId,
     summary: event.title,
     description: event.description,
-    start: {
-      dateTime: event.start,
-      timeZone: userTimezone,
-    },
-    end: {
-      dateTime: event.end,
-      timeZone: userTimezone,
-    },
+    start: event.allDay
+      ? { date: event.start.substring(0, 10) }
+      : { dateTime: event.start, timeZone: userTimezone },
+    end: event.allDay
+      ? { date: event.end.substring(0, 10) }
+      : { dateTime: event.end, timeZone: userTimezone },
     location: event.location,
     colorId: event.color ? reverseColorMap[event.color] || "1" : "1",
   }
@@ -213,13 +214,13 @@ async function storeGoogleEventsInDatabase(userId: string, events: CalendarEvent
 
     for (const event of events) {
 
-      if (existingEventIds.has(event.id)) {
+      const score = new Date(event.start).getTime()
+      if (existingEventIds.has(event.id) || isNaN(score)) {
         continue
       }
 
-
       await kv.zadd(`google_events:${userId}`, {
-        score: new Date(event.start).getTime(),
+        score,
         member: JSON.stringify(event),
       })
     }
@@ -253,7 +254,7 @@ export async function createGoogleCalendarEvent(
     const token = await refreshAccessTokenIfNeeded(userId, refreshToken, expiresAt)
 
 
-    const googleEvent = convertCalendarEventToGoogleEvent(event)
+    const googleEvent = await convertCalendarEventToGoogleEvent(event)
 
 
     const response = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events`, {
@@ -303,7 +304,7 @@ export async function updateGoogleCalendarEvent(
     const token = await refreshAccessTokenIfNeeded(userId, refreshToken, expiresAt)
 
 
-    const googleEvent = convertCalendarEventToGoogleEvent(event)
+    const googleEvent = await convertCalendarEventToGoogleEvent(event)
 
 
     const response = await fetch(

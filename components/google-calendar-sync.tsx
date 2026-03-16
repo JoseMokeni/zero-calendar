@@ -1,21 +1,24 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { RefreshCwIcon, CheckIcon, AlertCircleIcon } from "lucide-react"
 import { hasGoogleCalendarConnected } from "@/lib/calendar"
 
 export function GoogleCalendarSync() {
+  const { data: session } = useSession()
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<"idle" | "success" | "error">("idle")
   const [isConnected, setIsConnected] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
+    if (!session?.user?.id) return
     const checkConnection = async () => {
       try {
-        const connected = await hasGoogleCalendarConnected(window.sessionStorage.getItem("userId") || "")
+        const connected = await hasGoogleCalendarConnected(session.user.id)
         setIsConnected(connected)
       } catch (error) {
         console.error("Error checking Google Calendar connection:", error)
@@ -24,7 +27,7 @@ export function GoogleCalendarSync() {
     }
 
     checkConnection()
-  }, [])
+  }, [session])
 
   const handleSync = async () => {
     if (!isConnected) {
