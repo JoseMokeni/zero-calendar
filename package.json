@@ -66,7 +66,7 @@
     "moment": "latest",
     "moment-timezone": "latest",
     "nanoid": "latest",
-    "next": "15.2.4",
+    "next": "15.2.8",
     "next-auth": "latest",
     "next-themes": "latest",
     "nodemailer": "latest",
