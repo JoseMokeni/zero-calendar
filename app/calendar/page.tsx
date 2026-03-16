@@ -17,8 +17,8 @@ export default async function CalendarPage() {
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
   const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
 
-  const events = await getEvents(session.user.sub as string, startOfMonth, endOfMonth)
-  const categories = await getUserCategories(session.user.sub as string)
+  const events = await getEvents(session.user.id, startOfMonth, endOfMonth)
+  const categories = await getUserCategories(session.user.id)
 
   return (
     <div className="flex h-screen flex-col">
@@ -26,7 +26,7 @@ export default async function CalendarPage() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-auto p-4">
-          <MultiCalendarView initialEvents={events} initialCategories={categories} />
+          <MultiCalendarView initialEvents={events} initialCategories={categories.map((c) => c.name)} />
         </main>
       </div>
     </div>

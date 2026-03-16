@@ -69,7 +69,8 @@ export function Sidebar() {
       }
 
       const data = await response.json()
-      setCalendars(data.calendars)
+      const seen = new Set()
+      setCalendars(data.calendars.filter((c: Calendar) => !seen.has(c.id) && seen.add(c.id)))
     } catch (error) {
       console.error("Failed to fetch calendars:", error)
       setError("Failed to load calendars. Please try again.")

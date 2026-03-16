@@ -1,3 +1,5 @@
+"use server"
+
 import { kv } from "@/lib/kv-config"
 import { nanoid } from "nanoid"
 import { format } from "date-fns-tz"

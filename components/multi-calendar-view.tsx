@@ -186,7 +186,7 @@ export function MultiCalendarView({ initialEvents, initialCategories = [] }: Mul
 
         try {
           const fetchedCategories = await getUserCategories(session.user.id)
-          setCategories(fetchedCategories || [])
+          setCategories((fetchedCategories || []).map((c) => c.name))
         } catch (categoriesError) {
           console.error("Error fetching categories:", categoriesError)
           setCategories([])
